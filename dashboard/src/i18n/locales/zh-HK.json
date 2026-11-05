@@ -177,7 +177,12 @@
     "help": "需要協助？",
     "viewDocs": "查看文件",
     "footer": "由 Yudhi Armyndharis 及 OpenWA 社群用 ❤️ 打造",
-    "version": "v{{version}} · {{date}}"
+    "version": "v{{version}} · {{date}}",
+    "ssoButton": "Entrar com MartinsTech SSO",
+    "ssoOr": "or use an API key",
+    "ssoDenied": "Your account is not allowed to use OpenWA.",
+    "ssoInvalid": "Sign-in could not be completed. Try again.",
+    "ssoExpired": "Your session expired. Sign in again."
   },
   "dashboard": {
     "title": "控制面板",

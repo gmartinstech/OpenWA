@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Dashboard Keycloak SSO** on the bundled same-origin dashboard: OIDC authorization code + PKCE,
+  httpOnly session cookie, CSRF header on cookie-authenticated writes, and WebSocket cookie auth
+  restricted to the configured origin. API keys, including the `API_MASTER_KEY` bootstrap key, are
+  unchanged. SSO stays off unless issuer, client id, and redirect URL are set. See `docs/sso-keycloak.md`.
+
 ## [0.15.0] - 2026-08-09
 
 ### Added

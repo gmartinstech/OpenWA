@@ -23,6 +23,9 @@ export const PUBLIC_PATHS = [
   '/api/health/ready',
   '/api/infra/health',
   '/api/ingress/{pluginId}/{instanceId}/{path}',
+  '/api/auth/sso/session',
+  '/api/auth/sso/login',
+  '/api/auth/sso/callback',
 ];
 
 const HTTP_METHODS = ['get', 'post', 'put', 'delete', 'patch', 'options', 'head', 'trace', 'search'] as const;

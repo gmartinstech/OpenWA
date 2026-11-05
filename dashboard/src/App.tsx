@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, Suspense } from 'react';
+import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { lazyWithRetry as lazy } from './utils/lazyWithRetry';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -8,7 +8,7 @@ import { ToastProvider } from './components/Toast';
 import { useRole, type UserRole } from './hooks/useRole';
 import { RoleProvider } from './components/RoleProvider';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { API_BASE_URL } from './services/api';
+import { API_BASE_URL, setDashboardSso } from './services/api';
 import { clearActorState, resolveStartupValidation } from './utils/authLifecycle';
 import './App.css';
 
@@ -37,8 +37,9 @@ const queryClient = new QueryClient({
 function AppContent() {
   // Initialize from sessionStorage to avoid setState in effect
   const savedKey = sessionStorage.getItem('openwa_api_key');
-  const [isAuthenticated, setIsAuthenticated] = useState(!!savedKey);
+  const [authMode, setAuthMode] = useState<'loading' | 'key' | 'sso' | 'anon'>(savedKey ? 'key' : 'loading');
   const [, setApiKey] = useState(savedKey || '');
+  const csrfRef = useRef<string | null>(null);
   const { setRole, role } = useRole();
 
   const handleLogin = async (key: string) => {
@@ -60,24 +61,44 @@ function AppContent() {
       setRole('viewer');
     }
 
-    setIsAuthenticated(true);
+    setAuthMode('key');
   };
 
   const handleLogout = useCallback(() => {
+    if (authMode === 'sso') {
+      const token = csrfRef.current;
+      void fetch(`${API_BASE_URL}/auth/sso/logout`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: token ? { 'X-CSRF-Token': token } : {},
+      })
+        .then(response => response.json().catch(() => ({})))
+        .then((body: { logoutUrl?: string }) => {
+          setDashboardSso(false, null);
+          csrfRef.current = null;
+          sessionStorage.removeItem('openwa_api_key');
+          clearActorState(queryClient);
+          window.location.assign(typeof body.logoutUrl === 'string' ? body.logoutUrl : '/');
+        })
+        .catch(() => {
+          setDashboardSso(false, null);
+          window.location.assign('/');
+        });
+      return;
+    }
     setApiKey('');
-    setIsAuthenticated(false);
+    setAuthMode('anon');
     setRole(null);
     sessionStorage.removeItem('openwa_api_key');
     // Wipe the React Query cache too: it is keyed by resource, not actor, so without a full
     // clear a logout → login in the same tab with a different key/scope shows the previous
     // actor's sessions/messages/apiKeys/audit rows.
     clearActorState(queryClient);
-  }, [setRole]);
+  }, [authMode, setRole]);
 
-  // Re-validate and refresh the role on mount if already authenticated
+  // Re-validate a saved API key, or adopt a Keycloak session cookie.
   useEffect(() => {
-    if (!savedKey) return;
-
+    if (savedKey) {
     fetch(`${API_BASE_URL}/auth/validate`, {
       method: 'POST',
       headers: { 'X-API-Key': savedKey },
@@ -94,6 +115,28 @@ function AppContent() {
         // Network failure (API unreachable): keep the cached role so a transient outage at
         // page load doesn't eject the user — an explicit 401/403 above still logs out.
       });
+      return;
+    }
+
+    const ssoError = new URLSearchParams(window.location.search).get('sso_error');
+    fetch(`${API_BASE_URL}/auth/sso/session`, { credentials: 'include' })
+      .then(response => (response.ok ? response.json() : null))
+      .then((data: { authenticated?: boolean; role?: UserRole; csrfToken?: string } | null) => {
+        if (data?.authenticated && data.role && data.csrfToken && ssoError !== 'expired') {
+          sessionStorage.removeItem('openwa_api_key');
+          csrfRef.current = data.csrfToken;
+          setDashboardSso(true, data.csrfToken);
+          setRole(data.role);
+          setAuthMode('sso');
+          return;
+        }
+        setDashboardSso(false, null);
+        setAuthMode('anon');
+      })
+      .catch(() => {
+        setDashboardSso(false, null);
+        setAuthMode('anon');
+      });
   }, [savedKey, setRole, handleLogout]);
 
   const loadingFallback = (
@@ -102,7 +145,11 @@ function AppContent() {
     </div>
   );
 
-  if (!isAuthenticated) {
+  if (authMode === 'loading') {
+    return loadingFallback;
+  }
+
+  if (authMode === 'anon') {
     return (
       <Suspense fallback={loadingFallback}>
         <Login onLogin={handleLogin} />

@@ -163,6 +163,20 @@
   cursor: not-allowed;
 }
 
+.login-container a.connect-btn {
+  display: block;
+  box-sizing: border-box;
+  text-align: center;
+  text-decoration: none;
+}
+
+.login-container .login-or {
+  margin: 1rem 0 0;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
 .login-container .login-help {
   margin-top: 1.5rem;
   font-size: 0.875rem;

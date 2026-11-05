@@ -18,6 +18,35 @@ export const API_BASE_URL = `${API_ORIGIN}/api`;
 // insecure http:// URL pointing at a non-localhost host (API keys sent in cleartext).
 if (API_ORIGIN) warnIfInsecureHttpUrl(API_ORIGIN, 'VITE_API_URL');
 
+let ssoCsrfToken: string | null = null;
+let ssoActive = false;
+
+/** Remember the dashboard SSO session so mutating calls send the CSRF header and the socket can use the cookie. */
+export function setDashboardSso(active: boolean, csrfToken: string | null): void {
+  ssoActive = active;
+  ssoCsrfToken = active ? csrfToken : null;
+}
+
+export function dashboardSsoActive(): boolean {
+  return ssoActive;
+}
+
+function csrfHeaders(method: string | undefined, apiKey: string | null): Record<string, string> {
+  if (apiKey || !ssoCsrfToken) return {};
+  const normalized = (method || 'GET').toUpperCase();
+  if (normalized === 'GET' || normalized === 'HEAD' || normalized === 'OPTIONS') return {};
+  return { 'X-CSRF-Token': ssoCsrfToken };
+}
+
+function leaveAfterUnauthorized(hadApiKey: boolean): void {
+  sessionStorage.removeItem('openwa_api_key');
+  setDashboardSso(false, null);
+  if (typeof window === 'undefined') return;
+  const target = hadApiKey ? '/' : '/?sso_error=expired';
+  if (`${window.location.pathname}${window.location.search}` === target) return;
+  window.location.assign(target);
+}
+
 // =============================================================================
 // Types
 // =============================================================================
@@ -607,21 +636,23 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
   const headers: HeadersInit = {
     ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
     ...(apiKey ? { 'X-API-Key': apiKey } : {}),
+    ...csrfHeaders(options.method, apiKey),
     ...options.headers,
   };
 
-  const response = await fetch(url, { ...options, headers });
+  const response = await fetch(url, { ...options, headers, credentials: 'include' });
 
   if (response.status === 401) {
-    // The stored API key is invalid/expired/revoked — clear it and return to login
+    // The stored API key or SSO session is invalid — clear it and return to login
     // so the user isn't stuck on a dashboard that 401s every request.
-    sessionStorage.removeItem('openwa_api_key');
     if (typeof window !== 'undefined') {
-      window.location.assign('/');
+      leaveAfterUnauthorized(Boolean(apiKey));
       // The page is navigating away — halt this request's promise chain so callers neither
       // throw the generic error below (flashing a toast) nor receive an undefined payload.
       return new Promise<T>(() => {});
     }
+    sessionStorage.removeItem('openwa_api_key');
+    setDashboardSso(false, null);
   }
 
   if (!response.ok) {
@@ -656,14 +687,16 @@ async function requestText(endpoint: string): Promise<string> {
   const apiKey = sessionStorage.getItem('openwa_api_key');
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
     headers: { ...(apiKey ? { 'X-API-Key': apiKey } : {}) },
+    credentials: 'include',
   });
 
   if (response.status === 401) {
-    sessionStorage.removeItem('openwa_api_key');
     if (typeof window !== 'undefined') {
-      window.location.assign('/');
+      leaveAfterUnauthorized(Boolean(apiKey));
       return new Promise<string>(() => {});
     }
+    sessionStorage.removeItem('openwa_api_key');
+    setDashboardSso(false, null);
   }
 
   if (!response.ok) {
@@ -685,16 +718,17 @@ async function requestBlob(endpoint: string): Promise<Blob> {
     ...(apiKey ? { 'X-API-Key': apiKey } : {}),
   };
 
-  const response = await fetch(url, { headers });
+  const response = await fetch(url, { headers, credentials: 'include' });
 
   if (response.status === 401) {
-    // The stored API key is invalid/expired/revoked — clear it and return to login
-    sessionStorage.removeItem('openwa_api_key');
+    // The stored API key or SSO session is invalid — clear it and return to login
     if (typeof window !== 'undefined') {
-      window.location.assign('/');
+      leaveAfterUnauthorized(Boolean(apiKey));
       // Halt this request's promise chain so callers neither throw nor receive an undefined payload.
       return new Promise<Blob>(() => {});
     }
+    sessionStorage.removeItem('openwa_api_key');
+    setDashboardSso(false, null);
   }
 
   if (!response.ok) {

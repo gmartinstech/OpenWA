@@ -188,7 +188,12 @@
     "help": "هل تحتاج مساعدة؟",
     "viewDocs": "عرض التوثيق",
     "footer": "صُنع بـ ❤️ بواسطة Yudhi Armyndharis ومجتمع OpenWA",
-    "version": "v{{version}} · {{date}}"
+    "version": "v{{version}} · {{date}}",
+    "ssoButton": "Entrar com MartinsTech SSO",
+    "ssoOr": "or use an API key",
+    "ssoDenied": "Your account is not allowed to use OpenWA.",
+    "ssoInvalid": "Sign-in could not be completed. Try again.",
+    "ssoExpired": "Your session expired. Sign in again."
   },
   "dashboard": {
     "title": "لوحة التحكم",

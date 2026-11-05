@@ -119,6 +119,13 @@ export const BLANK_SHADOWED_ENV_KEYS: string[] = [
   'API_MASTER_KEY',
   'TRUSTED_PROXIES',
   'CSP_UPGRADE_INSECURE_REQUESTS',
+  // Dashboard SSO. Blank compose forwards must not pin SSO off over data/.env.generated.
+  'OPENWA_SSO_ISSUER',
+  'OPENWA_SSO_CLIENT_ID',
+  'OPENWA_SSO_CLIENT_SECRET',
+  'OPENWA_SSO_REDIRECT_URL',
+  'OPENWA_SSO_COOKIE_SECURE',
+  'OPENWA_SSO_POST_LOGOUT_URL',
   // whatsapp-web.js launch knobs: the WhatsApp Web version pin, its remote HTML template, and the
   // first-boot init wait raised for slow hosts.
   'WWEBJS_WEB_VERSION',
