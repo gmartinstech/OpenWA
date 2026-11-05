@@ -177,7 +177,12 @@
     "help": "Precisa de ajuda?",
     "viewDocs": "Ver documentação",
     "footer": "Feito com ❤️ por Yudhi Armyndharis e a comunidade OpenWA",
-    "version": "v{{version}} · {{date}}"
+    "version": "v{{version}} · {{date}}",
+    "ssoButton": "Entrar com MartinsTech SSO",
+    "ssoOr": "ou use uma API key",
+    "ssoDenied": "Sua conta não tem permissão para usar o OpenWA.",
+    "ssoInvalid": "Não foi possível concluir o login. Tente novamente.",
+    "ssoExpired": "Sua sessão expirou. Entre novamente."
   },
   "dashboard": {
     "title": "Painel",

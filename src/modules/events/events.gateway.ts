@@ -11,6 +11,9 @@ import {
 import { Server, Socket } from 'socket.io';
 import { Logger, OnModuleDestroy } from '@nestjs/common';
 import { AuthService } from '../auth/auth.service';
+import { SessionStore } from '../auth/sso/session-store';
+import { isAllowedSsoOrigin, resolveSessionAuth, ssoAllowedOrigin } from '../auth/sso/sso-principal';
+import { loadSsoConfig } from '../auth/sso/sso.config';
 import { AuditService } from '../audit/audit.service';
 import { AuditAction } from '../audit/entities/audit-log.entity';
 import { resolveCorsPolicy } from '../../config/bootstrap-security';
@@ -129,6 +132,7 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
   constructor(
     private readonly authService: AuthService,
     private readonly auditService: AuditService,
+    private readonly sessions: SessionStore = new SessionStore(),
   ) {
     this.rateLimits = readWsRateLimitConfig();
     this.frameLimiter = new TokenBucketLimiter(this.rateLimits.framePerSecond, this.rateLimits.frameBurst);
@@ -241,6 +245,25 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
     const apiKey = handshakeAuth?.apiKey || (client.handshake.headers['x-api-key'] as string);
 
     if (!apiKey) {
+      const sessionAuth = resolveSessionAuth(this.sessions, client.handshake.headers.cookie);
+      if (sessionAuth.status === 'ok') {
+        const originHeader = client.handshake.headers.origin as string | string[] | undefined;
+        const origin = Array.isArray(originHeader) ? originHeader[0] : originHeader;
+        if (!isAllowedSsoOrigin(origin, ssoAllowedOrigin())) {
+          this.logger.warn(`Client ${client.id} rejected: SSO websocket origin rejected`);
+          void this.auditService.logWarn(AuditAction.API_KEY_AUTH_FAILED, {
+            ipAddress: clientIp,
+            metadata: { surface: 'websocket' },
+            errorMessage: 'sso origin rejected',
+          });
+          client.emit('message', this.createError('UNAUTHORIZED', 'API key required'));
+          client.disconnect();
+          return;
+        }
+        if (!this.acceptSocket(client, sessionAuth.apiKey, clientIp)) return;
+        (client.data as { ssoSessionId?: string }).ssoSessionId = sessionAuth.sessionId;
+        return;
+      }
       this.logger.warn(`Client ${client.id} rejected: No API key provided`);
       void this.auditService.logWarn(AuditAction.API_KEY_AUTH_FAILED, {
         ipAddress: clientIp,
@@ -262,35 +285,10 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
       // Cap simultaneous sockets per key: each socket holds rooms, engine fan-out, and memory,
       // so one key must not open connections without bound. Enough for multi-tab dashboards;
       // excess connections get a clear error, not a silent drop.
-      const existing = this.socketsByKeyId.get(validKey.id);
-      if (existing && existing.size >= this.rateLimits.maxSocketsPerKey) {
-        this.logger.warn(
-          `Client ${client.id} rejected: socket cap reached for key ${validKey.id} (${this.rateLimits.maxSocketsPerKey})`,
-        );
-        this.noteRateLimitViolation('sockets', { apiKeyId: validKey.id, ipAddress: clientIp });
-        client.emit(
-          'message',
-          this.createError(
-            'RATE_LIMITED',
-            `Too many concurrent connections for this API key (max ${this.rateLimits.maxSocketsPerKey})`,
-          ),
-        );
-        client.disconnect();
-        return;
-      }
-
+      if (!this.acceptSocket(client, validKey, clientIp)) return;
       // Store the validated key AND the raw key — the raw key lets handleSubscribe
       // RE-validate on each subscription so a key revoked mid-connection is caught.
-      (client.data as { apiKey: unknown; rawApiKey: string }).apiKey = validKey;
       (client.data as { rawApiKey: string }).rawApiKey = apiKey;
-      this.trackSocket(validKey.id, client);
-      // The handshake window is charged pre-auth to keep an unauthenticated flood off the DB. This
-      // one turned out to be authentic, so give the slot back: the window then bounds FAILED
-      // handshakes, and authenticated connections stay bounded by maxSocketsPerKey above. Without
-      // this, every client behind one NAT/proxy IP shares a 10/min budget and normal dashboard
-      // re-mounts lock each other out.
-      this.handshakeLimiter.refund(clientIp);
-      this.logger.log(`Client connected: ${client.id} (key: ${validKey.name})`);
     } catch (error) {
       this.logger.warn(`Client ${client.id} rejected: Auth error`, {
         error: error instanceof Error ? error.message : String(error),
@@ -305,6 +303,39 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
       client.emit('message', this.createError('UNAUTHORIZED', 'Authentication failed'));
       client.disconnect();
     }
+  }
+
+  /**
+   * Bound the socket, remember the principal, and refund the pre-auth handshake slot.
+   * Returns false when the per-principal cap rejected the connection (already disconnected).
+   */
+  private acceptSocket(client: Socket, apiKey: ApiKey, clientIp: string): boolean {
+    const existing = this.socketsByKeyId.get(apiKey.id);
+    if (existing && existing.size >= this.rateLimits.maxSocketsPerKey) {
+      this.logger.warn(
+        `Client ${client.id} rejected: socket cap reached for key ${apiKey.id} (${this.rateLimits.maxSocketsPerKey})`,
+      );
+      this.noteRateLimitViolation('sockets', { apiKeyId: apiKey.id, ipAddress: clientIp });
+      client.emit(
+        'message',
+        this.createError(
+          'RATE_LIMITED',
+          `Too many concurrent connections for this API key (max ${this.rateLimits.maxSocketsPerKey})`,
+        ),
+      );
+      client.disconnect();
+      return false;
+    }
+    (client.data as { apiKey: unknown }).apiKey = apiKey;
+    this.trackSocket(apiKey.id, client);
+    // The handshake window is charged pre-auth to keep an unauthenticated flood off the DB. This
+    // one turned out to be authentic, so give the slot back: the window then bounds FAILED
+    // handshakes, and authenticated connections stay bounded by maxSocketsPerKey above. Without
+    // this, every client behind one NAT/proxy IP shares a 10/min budget and normal dashboard
+    // re-mounts lock each other out.
+    this.handshakeLimiter.refund(clientIp);
+    this.logger.log(`Client connected: ${client.id} (key: ${apiKey.name})`);
+    return true;
   }
 
   handleDisconnect(client: Socket) {
@@ -363,10 +394,17 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
     // The clientIp is re-resolved (trusted-proxy-aware) so an IP-restricted key is enforced
     // here too, not just at connect.
     const rawApiKey = (client.data as { rawApiKey?: string }).rawApiKey;
+    const ssoSessionId = (client.data as { ssoSessionId?: string }).ssoSessionId;
     const clientIp = this.resolveClientIp(client);
     let subscriberKey: { allowedSessions?: string[] | null } | null;
     try {
-      subscriberKey = rawApiKey ? await this.authService.validateApiKey(rawApiKey, clientIp) : null;
+      if (ssoSessionId) {
+        const cookieName = loadSsoConfig().sessionCookieName;
+        const again = resolveSessionAuth(this.sessions, `${cookieName}=${encodeURIComponent(ssoSessionId)}`);
+        subscriberKey = again.status === 'ok' ? again.apiKey : null;
+      } else {
+        subscriberKey = rawApiKey ? await this.authService.validateApiKey(rawApiKey, clientIp) : null;
+      }
     } catch {
       subscriberKey = null;
     }

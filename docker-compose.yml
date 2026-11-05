@@ -254,6 +254,16 @@ services:
       # Security
       - API_MASTER_KEY=${API_MASTER_KEY:-}
       - TRUSTED_PROXIES=${TRUSTED_PROXIES:-}
+      # Dashboard SSO. Disabled unless issuer, client id, and redirect URL are all set.
+      # See docs/sso-keycloak.md. Do not commit a real client secret.
+      - OPENWA_SSO_ISSUER=${OPENWA_SSO_ISSUER:-}
+      - OPENWA_SSO_CLIENT_ID=${OPENWA_SSO_CLIENT_ID:-}
+      - OPENWA_SSO_CLIENT_SECRET=${OPENWA_SSO_CLIENT_SECRET:-}
+      - OPENWA_SSO_REDIRECT_URL=${OPENWA_SSO_REDIRECT_URL:-}
+      - OPENWA_SSO_ROLE=${OPENWA_SSO_ROLE:-openwa-user}
+      - OPENWA_SSO_SESSION_TTL=${OPENWA_SSO_SESSION_TTL:-3600}
+      - OPENWA_SSO_COOKIE_SECURE=${OPENWA_SSO_COOKIE_SECURE:-}
+      - OPENWA_SSO_POST_LOGOUT_URL=${OPENWA_SSO_POST_LOGOUT_URL:-}
       # Forward the plain-HTTP dashboard CSP override; unset preserves the application default.
       - CSP_UPGRADE_INSECURE_REQUESTS=${CSP_UPGRADE_INSECURE_REQUESTS:-}
       # Docker socket proxy (openwa-api never touches /var/run/docker.sock directly)

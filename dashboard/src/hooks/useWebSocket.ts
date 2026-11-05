@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
+import { dashboardSsoActive } from '../services/api';
 import { warnIfInsecureHttpUrl } from '../utils/urlSecurity';
 
 interface SessionStatusEvent {
@@ -159,7 +160,7 @@ export function useWebSocket(events: WebSocketEvents = {}) {
     // Get API key from sessionStorage (same as api.ts)
     const apiKey = sessionStorage.getItem('openwa_api_key');
 
-    if (!apiKey) {
+    if (!apiKey && !dashboardSsoActive()) {
       console.warn('[WebSocket] No API key found, skipping connection');
       return;
     }
@@ -169,14 +170,11 @@ export function useWebSocket(events: WebSocketEvents = {}) {
       reconnection: true,
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,
+      withCredentials: true,
       // Send the key via `auth` (and a header for proxies). NOT via `query` — a key in the
-      // handshake URL leaks into access logs / Referer. The gateway reads auth first.
-      auth: {
-        apiKey,
-      },
-      extraHeaders: {
-        'X-API-Key': apiKey,
-      },
+      // handshake URL leaks into access logs / Referer. SSO uses the httpOnly cookie instead.
+      auth: apiKey ? { apiKey } : {},
+      extraHeaders: apiKey ? { 'X-API-Key': apiKey } : {},
     });
 
     socketRef.current.on('connect', () => {

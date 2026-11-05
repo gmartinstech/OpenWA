@@ -1,6 +1,7 @@
 import { UnauthorizedException } from '@nestjs/common';
 import { Socket } from 'socket.io';
 import { EventsGateway, isSessionSubscriptionAllowed } from './events.gateway';
+import { SessionStore } from '../auth/sso/session-store';
 import { AuthService } from '../auth/auth.service';
 import { AuditService } from '../audit/audit.service';
 import { AuditAction } from '../audit/entities/audit-log.entity';
@@ -76,6 +77,55 @@ describe('EventsGateway connection auth + subscribe re-validation', () => {
     await gateway.handleConnection(asSocket(sock));
     expect(sock.disconnect).toHaveBeenCalled();
     expect(authService.validateApiKey).not.toHaveBeenCalled();
+  });
+
+  it('accepts an SSO session cookie only when the websocket Origin is the configured redirect origin', async () => {
+    const previousIssuer = process.env.OPENWA_SSO_ISSUER;
+    const previousClient = process.env.OPENWA_SSO_CLIENT_ID;
+    const previousRedirect = process.env.OPENWA_SSO_REDIRECT_URL;
+    process.env.OPENWA_SSO_ISSUER = 'https://idp.example/realms/MartinsTech';
+    process.env.OPENWA_SSO_CLIENT_ID = 'openwa';
+    process.env.OPENWA_SSO_REDIRECT_URL = 'https://openwa.example/api/auth/sso/callback';
+    try {
+      const sessions = new SessionStore();
+      const ssoGateway = new EventsGateway(
+        authService as unknown as AuthService,
+        auditService as unknown as AuditService,
+        sessions,
+      );
+      const session = sessions.createSession({
+        subject: 'sub',
+        username: 'gabriel',
+        idToken: 'id-token-secret',
+        ttlSeconds: 60,
+      });
+      expect(session).toBeDefined();
+
+      const crossSite = makeSocket({});
+      crossSite.handshake.headers.cookie = `openwa_session=${session!.id}`;
+      crossSite.handshake.headers.origin = 'https://evil.example';
+      await ssoGateway.handleConnection(asSocket(crossSite));
+      expect(crossSite.disconnect).toHaveBeenCalled();
+
+      const sameOrigin = makeSocket({});
+      sameOrigin.handshake.headers.cookie = `openwa_session=${session!.id}`;
+      sameOrigin.handshake.headers.origin = 'https://openwa.example';
+      await ssoGateway.handleConnection(asSocket(sameOrigin));
+      expect(sameOrigin.disconnect).not.toHaveBeenCalled();
+      expect(authService.validateApiKey).not.toHaveBeenCalled();
+      expect(JSON.stringify(sameOrigin.emit.mock.calls)).not.toContain(session!.id);
+
+      sessions.deleteSession(session!.id);
+      await ssoGateway.handleMessage(asSocket(sameOrigin), subscribeMsg('sess-1', ['message.received']));
+      expect(sameOrigin.disconnect).toHaveBeenCalled();
+    } finally {
+      if (previousIssuer === undefined) delete process.env.OPENWA_SSO_ISSUER;
+      else process.env.OPENWA_SSO_ISSUER = previousIssuer;
+      if (previousClient === undefined) delete process.env.OPENWA_SSO_CLIENT_ID;
+      else process.env.OPENWA_SSO_CLIENT_ID = previousClient;
+      if (previousRedirect === undefined) delete process.env.OPENWA_SSO_REDIRECT_URL;
+      else process.env.OPENWA_SSO_REDIRECT_URL = previousRedirect;
+    }
   });
 
   it('does NOT accept the API key from the query string (credential must not travel in the URL)', async () => {
