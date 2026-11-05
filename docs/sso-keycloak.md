@@ -22,7 +22,7 @@ Realm `MartinsTech`, Keycloak 26.
 | Web origins | `https://<public-origin>` |
 | Default scopes | `openid`, `profile`, `roles` |
 
-Create realm role `openwa-user` (or the value of `OPENWA_SSO_ROLE`) and assign it to the people who may use the dashboard. A client role of the same name on **this** client also counts. Roles of other clients do not. The ID token `aud` must be this client. An access token is accepted only when `aud` or `azp` is this client, which is how Keycloak 26 emits `aud=account` plus `azp=<client id>`.
+Create realm role `openwa-user` (or the value of `OPENWA_SSO_ROLE`) and assign it to the people who may use the dashboard. A client role of the same name on **this** client also counts. Roles of other clients do not. OpenWA reads only `realm_access.roles` and `resource_access[<this client id>].roles`. A top-level `roles` claim is ignored. The ID token `aud` must be this client. An access token is accepted only when `aud` or `azp` is this client, which is how Keycloak 26 emits `aud=account` plus `azp=<client id>`.
 
 Users without the role get **403** and no session. A user who has the role receives an httpOnly session and the same API authorization as an admin key (`allowedSessions` empty), because that is what the dashboard uses today.
 
@@ -51,7 +51,13 @@ OPENWA_SSO_POST_LOGOUT_URL=https://openwa.example/
 
 The `/events` WebSocket accepts the session cookie only when the handshake `Origin` is exactly the redirect URL's origin. A missing or foreign `Origin` is rejected. The session id is not put in the query string. There is no SSE dashboard stream; MCP keeps its own authentication.
 
-Sessions and in-flight login transactions are in-memory, each capped at 10,000, with TTL. Restarting the API drops them. No new database.
+Sessions and in-flight login transactions are in-memory, each capped at 10,000, with a 10-minute TTL on a pending login. Restarting the API drops them. No new database.
+
+**Before exposing the dashboard outside the tailnet,** add per-IP rate limiting on `GET /api/auth/sso/login`. The cap is global, not per caller: 10,000 pending transactions inside that 10-minute window makes the next legitimate login return 502 (`upstream`) until entries expire. The existing API throttler still applies, but it is not a dedicated login budget. Do not publish the origin beyond the tailnet until that per-IP limit exists.
+
+## CORS
+
+`GET /api/auth/sso/session` returns `csrfToken` to whoever can read the response with the session cookie. Cookie auth uses `credentials`. An explicit `CORS_ORIGINS` list turns credentialed cross-origin reads on for those origins, so any origin on that list can read the CSRF token and then call cookie-authenticated routes. Production should keep **no extra origins** (`CORS_ORIGINS` unset, or not a list that includes anything other than the dashboard origin you actually serve). The same-origin bundled dashboard does not need a CORS entry. Do not set `CORS_ORIGINS=*`; this version already refuses that wildcard in production.
 
 ## Reverse proxy
 

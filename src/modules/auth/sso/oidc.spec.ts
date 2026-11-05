@@ -144,6 +144,7 @@ describe('OIDC token checks', () => {
           openwa: { roles: ['dashboard'] },
           other: { roles: ['secret-admin'] },
         },
+        roles: ['not-accepted'],
       },
       'openwa',
     );

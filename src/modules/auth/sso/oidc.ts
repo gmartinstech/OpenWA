@@ -1,4 +1,6 @@
-import { createHash, createPublicKey, createVerify, randomBytes, timingSafeEqual, type JsonWebKey } from 'crypto';
+import { createHash, createPublicKey, createVerify, randomBytes, timingSafeEqual, type webcrypto } from 'crypto';
+
+type JsonWebKey = webcrypto.JsonWebKey;
 
 export type JwtFailure = 'malformed' | 'unsupported_alg' | 'unknown_kid' | 'bad_signature' | 'claims' | 'nonce';
 
@@ -74,11 +76,6 @@ export function collectRoles(claims: Record<string, unknown>, clientId: string):
       for (const role of client.roles) {
         if (typeof role === 'string') roles.push(role);
       }
-    }
-  }
-  if (Array.isArray(claims.roles)) {
-    for (const role of claims.roles) {
-      if (typeof role === 'string') roles.push(role);
     }
   }
   return roles;
