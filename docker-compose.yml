@@ -70,6 +70,16 @@ services:
       - PLUGINS_DIR=/app/data/plugins
       # Security
       - API_MASTER_KEY=${API_MASTER_KEY:-}
+      # Dashboard SSO (disabled while the issuer is empty). See docs/sso-keycloak.md
+      - OPENWA_SSO_ISSUER=${OPENWA_SSO_ISSUER:-}
+      - OPENWA_SSO_CLIENT_ID=${OPENWA_SSO_CLIENT_ID:-}
+      - OPENWA_SSO_CLIENT_SECRET=${OPENWA_SSO_CLIENT_SECRET:-}
+      - OPENWA_SSO_REDIRECT_URL=${OPENWA_SSO_REDIRECT_URL:-}
+      - OPENWA_SSO_ROLE=${OPENWA_SSO_ROLE:-openwa-user}
+      - OPENWA_SSO_SESSION_TTL=${OPENWA_SSO_SESSION_TTL:-3600}
+      - OPENWA_SSO_COOKIE_SECURE=${OPENWA_SSO_COOKIE_SECURE:-}
+      - OPENWA_SSO_POST_LOGOUT_URL=${OPENWA_SSO_POST_LOGOUT_URL:-}
+      - OPENWA_TRUST_PROXY=${OPENWA_TRUST_PROXY:-}
     volumes:
       - openwa-data:/app/data
       - /var/run/docker.sock:/var/run/docker.sock:ro

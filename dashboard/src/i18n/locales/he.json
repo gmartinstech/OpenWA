@@ -79,7 +79,12 @@
     "help": "צריך עזרה?",
     "viewDocs": "לצפייה בתיעוד",
     "footer": "נבנה באהבה על ידי Yudhi Armyndharis וקהילת OpenWA",
-    "version": "v{{version}} · {{date}}"
+    "version": "v{{version}} · {{date}}",
+    "ssoButton": "Entrar com MartinsTech SSO",
+    "ssoOr": "או שימוש במפתח API",
+    "ssoDenied": "לחשבון הזה אין הרשאה להיכנס ל-OpenWA.",
+    "ssoInvalid": "לא ניתן להשלים את ההתחברות. נסה שוב.",
+    "ssoExpired": "פג תוקף ההתחברות. יש להתחבר מחדש."
   },
   "dashboard": {
     "title": "דאשבורד",

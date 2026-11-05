@@ -144,6 +144,24 @@
   cursor: not-allowed;
 }
 
+a.connect-btn {
+  display: block;
+  box-sizing: border-box;
+  text-align: center;
+  text-decoration: none;
+}
+
+.sso-login {
+  margin-bottom: 0.5rem;
+}
+
+.login-or {
+  margin: 1rem 0 0;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
 .login-help {
   margin-top: 1.5rem;
   font-size: 0.875rem;

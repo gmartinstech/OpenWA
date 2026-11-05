@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Eye, EyeOff } from 'lucide-react';
 import { GithubIcon } from '../components/GithubIcon';
@@ -14,6 +14,32 @@ export function Login({ onLogin }: LoginProps) {
   const [showKey, setShowKey] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [ssoEnabled, setSsoEnabled] = useState(false);
+  const ssoError = new URLSearchParams(window.location.search).get('sso_error');
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/auth/sso/session', { credentials: 'include' })
+      .then(response => (response.ok ? response.json() : null))
+      .then(data => {
+        if (!cancelled) setSsoEnabled(Boolean(data?.ssoEnabled));
+      })
+      .catch(() => {
+        if (!cancelled) setSsoEnabled(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const ssoMessage =
+    ssoError === 'denied'
+      ? t('login.ssoDenied')
+      : ssoError === 'expired'
+        ? t('login.ssoExpired')
+        : ssoError === 'invalid'
+          ? t('login.ssoInvalid')
+          : '';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,6 +84,17 @@ export function Login({ onLogin }: LoginProps) {
             })}
           </span>
         </div>
+        {ssoEnabled && (
+          <div className="sso-login">
+            <a className="connect-btn sso-btn" href="/api/auth/sso/login">
+              {t('login.ssoButton')}
+            </a>
+            {ssoMessage && <span className="error-message">{ssoMessage}</span>}
+            <p className="login-or">{t('login.ssoOr')}</p>
+          </div>
+        )}
+        {!ssoEnabled && ssoMessage && <span className="error-message">{ssoMessage}</span>}
+
         <form onSubmit={handleSubmit} className="login-form">
           <div className="input-group">
             <label htmlFor="apiKey">{t('login.apiKey')}</label>

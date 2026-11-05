@@ -39,25 +39,15 @@ export function useWebSocket(events: WebSocketEvents = {}) {
     // Get API key from sessionStorage (same as api.ts)
     const apiKey = sessionStorage.getItem('openwa_api_key');
 
-    if (!apiKey) {
-      console.warn('[WebSocket] No API key found, skipping connection');
-      return;
-    }
-
     socketRef.current = io(`${SOCKET_URL}/events`, {
       autoConnect: true,
       reconnection: true,
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,
-      auth: {
-        apiKey,
-      },
-      extraHeaders: {
-        'X-API-Key': apiKey,
-      },
-      query: {
-        apiKey,
-      },
+      withCredentials: true,
+      auth: apiKey ? { apiKey } : {},
+      extraHeaders: apiKey ? { 'X-API-Key': apiKey } : {},
+      query: apiKey ? { apiKey } : {},
     });
 
     socketRef.current.on('connect', () => {

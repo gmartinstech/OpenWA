@@ -157,11 +157,21 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     ...options.headers,
   };
 
-  const response = await fetch(url, { ...options, headers });
+  const response = await fetch(url, { ...options, headers, credentials: 'include' });
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ message: response.statusText }));
-    throw new Error(error.message || `HTTP ${response.status}`);
+    const message = error.message || `HTTP ${response.status}`;
+    if (
+      response.status === 401 &&
+      message === 'Session expired' &&
+      !sessionStorage.getItem('openwa_api_key') &&
+      typeof window !== 'undefined' &&
+      new URLSearchParams(window.location.search).get('sso_error') !== 'expired'
+    ) {
+      window.location.assign('/?sso_error=expired');
+    }
+    throw new Error(message);
   }
 
   if (response.status === 204) {

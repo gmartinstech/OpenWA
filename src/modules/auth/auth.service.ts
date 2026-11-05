@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException, UnauthorizedException, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { createHash, randomBytes } from 'crypto';
+import { createHash, randomBytes, timingSafeEqual } from 'crypto';
 import { existsSync, writeFileSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { ApiKey, ApiKeyRole } from './entities/api-key.entity';
@@ -158,6 +158,10 @@ export class AuthService implements OnModuleInit {
   }
 
   async validateApiKey(rawKey: string, clientIp?: string, sessionId?: string): Promise<ApiKey> {
+    if (this.matchesMasterKey(rawKey)) {
+      return this.masterKeyPrincipal();
+    }
+
     const keyHash = this.hashKey(rawKey);
     const apiKey = await this.apiKeyRepository.findOne({ where: { keyHash } });
 
@@ -201,6 +205,37 @@ export class AuthService implements OnModuleInit {
 
   private hashKey(rawKey: string): string {
     return createHash('sha256').update(rawKey).digest('hex');
+  }
+
+  /**
+   * API_MASTER_KEY is the optional static credential for machine clients.
+   * It is compared by hash so the raw value is never logged and empty values never match.
+   */
+  private matchesMasterKey(rawKey: string): boolean {
+    const configured = process.env.API_MASTER_KEY?.trim();
+    if (!configured || !rawKey) return false;
+    const configuredHash = createHash('sha256').update(configured).digest();
+    const presentedHash = createHash('sha256').update(rawKey).digest();
+    return timingSafeEqual(configuredHash, presentedHash);
+  }
+
+  private masterKeyPrincipal(): ApiKey {
+    const now = new Date();
+    return {
+      id: 'master',
+      name: 'API master key',
+      keyHash: '',
+      keyPrefix: 'master',
+      role: ApiKeyRole.ADMIN,
+      allowedIps: null,
+      allowedSessions: null,
+      isActive: true,
+      expiresAt: null,
+      lastUsedAt: null,
+      usageCount: 0,
+      createdAt: now,
+      updatedAt: now,
+    };
   }
 
   private isIpAllowed(clientIp: string, allowedIps: string[]): boolean {

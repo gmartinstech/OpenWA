@@ -177,6 +177,25 @@ describe('AuthService', () => {
   // ── validateApiKey ────────────────────────────────────────────────
 
   describe('validateApiKey', () => {
+    it('accepts API_MASTER_KEY without a database lookup', async () => {
+      process.env.API_MASTER_KEY = 'machine-secret';
+
+      const result = await service.validateApiKey('machine-secret');
+
+      expect(result.role).toBe(ApiKeyRole.ADMIN);
+      expect(result.name).toBe('API master key');
+      expect(repository.findOne).not.toHaveBeenCalled();
+      delete process.env.API_MASTER_KEY;
+    });
+
+    it('does not treat an empty API_MASTER_KEY as a credential', async () => {
+      process.env.API_MASTER_KEY = '   ';
+      (repository.findOne as jest.Mock).mockResolvedValue(null);
+
+      await expect(service.validateApiKey('')).rejects.toThrow(UnauthorizedException);
+      delete process.env.API_MASTER_KEY;
+    });
+
     it('should return the API key for a valid raw key', async () => {
       const rawKey = 'test-key';
       const key = createMockApiKey({ keyHash: hashKey(rawKey) });

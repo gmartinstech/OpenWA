@@ -11,6 +11,8 @@ import {
 import { Server, Socket } from 'socket.io';
 import { Logger } from '@nestjs/common';
 import { AuthService } from '../auth/auth.service';
+import { resolveSessionAuth } from '../auth/sso/sso-principal';
+import { SessionStore } from '../auth/sso/session-store';
 import type {
   WSClientMessage,
   WSSubscribeRequest,
@@ -35,7 +37,10 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
 
   private logger = new Logger('EventsGateway');
 
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly sessions: SessionStore,
+  ) {}
 
   afterInit() {
     this.logger.log('WebSocket Gateway initialized');
@@ -46,6 +51,12 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
     const apiKey = (client.handshake.headers['x-api-key'] as string) || (client.handshake.query.apiKey as string);
 
     if (!apiKey) {
+      const sessionAuth = resolveSessionAuth(this.sessions, client.handshake.headers.cookie);
+      if (sessionAuth.status === 'ok') {
+        (client.data as { apiKey: unknown }).apiKey = sessionAuth.apiKey;
+        this.logger.log(`Client connected: ${client.id} (sso: ${sessionAuth.apiKey.name})`);
+        return;
+      }
       this.logger.warn(`Client ${client.id} rejected: No API key provided`);
       client.emit('message', this.createError('UNAUTHORIZED', 'API key required'));
       client.disconnect();

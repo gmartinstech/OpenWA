@@ -31,7 +31,7 @@ const queryClient = new QueryClient({
 function AppContent() {
   // Initialize from sessionStorage to avoid setState in effect
   const savedKey = sessionStorage.getItem('openwa_api_key');
-  const [isAuthenticated, setIsAuthenticated] = useState(!!savedKey);
+  const [authMode, setAuthMode] = useState<'loading' | 'key' | 'sso' | 'anon'>('loading');
   const [, setApiKey] = useState(savedKey || '');
   const { setRole, role } = useRole();
 
@@ -54,34 +54,58 @@ function AppContent() {
       setRole('viewer');
     }
 
-    setIsAuthenticated(true);
+    setAuthMode('key');
   };
 
   const handleLogout = () => {
+    if (authMode === 'sso') {
+      sessionStorage.removeItem('openwa_api_key');
+      window.location.assign('/api/auth/sso/logout');
+      return;
+    }
     setApiKey('');
-    setIsAuthenticated(false);
+    setAuthMode('anon');
     setRole(null);
     sessionStorage.removeItem('openwa_api_key');
   };
 
-  // Re-validate and get role on mount if already authenticated
+  // Re-validate a saved API key, or adopt a Keycloak session cookie.
   useEffect(() => {
-    if (!savedKey) return;
+    const ssoError = new URLSearchParams(window.location.search).get('sso_error');
+    if (ssoError === 'expired') sessionStorage.removeItem('openwa_api_key');
 
-    fetch('/api/auth/validate', {
-      method: 'POST',
-      headers: { 'X-API-Key': savedKey },
-    })
-      .then(res => res.json())
-      .then(data => {
-        if (data.valid && data.role) {
-          setRole(data.role as UserRole);
-        }
+    if (savedKey && ssoError !== 'expired') {
+      setAuthMode('key');
+      fetch('/api/auth/validate', {
+        method: 'POST',
+        headers: { 'X-API-Key': savedKey },
       })
-      .catch(() => {
-        // Keep existing role from localStorage if validation fails
-      });
-  }, [savedKey, setRole]);
+        .then(res => res.json())
+        .then(data => {
+          if (data.valid && data.role) {
+            setRole(data.role as UserRole);
+          }
+        })
+        .catch(() => {
+          // Keep existing role from localStorage if validation fails
+        });
+      return;
+    }
+
+    fetch('/api/auth/sso/session', { credentials: 'include' })
+      .then(response => (response.ok ? response.json() : null))
+      .then(data => {
+        if (data?.authenticated && data.role) {
+          sessionStorage.removeItem('openwa_api_key');
+          setApiKey('');
+          setRole(data.role as UserRole);
+          setAuthMode('sso');
+          return;
+        }
+        setAuthMode('anon');
+      })
+      .catch(() => setAuthMode('anon'));
+  }, [savedKey, setApiKey, setRole]);
 
   const loadingFallback = (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}>
@@ -89,7 +113,11 @@ function AppContent() {
     </div>
   );
 
-  if (!isAuthenticated) {
+  if (authMode === 'loading') {
+    return loadingFallback;
+  }
+
+  if (authMode === 'anon') {
     return <Suspense fallback={loadingFallback}><Login onLogin={handleLogin} /></Suspense>;
   }
 

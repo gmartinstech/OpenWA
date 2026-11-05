@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Dashboard Keycloak SSO**: optional OIDC authorization-code login with PKCE for the
+  bundled dashboard. A short-lived httpOnly session cookie authorizes the same API calls as an
+  admin API key. `API_MASTER_KEY` and database API keys are unchanged. SSO stays off unless
+  `OPENWA_SSO_ISSUER`, `OPENWA_SSO_CLIENT_ID`, and `OPENWA_SSO_REDIRECT_URL` are set.
+  See `docs/sso-keycloak.md`.
+
 ## [0.1.6] - 2026-05-17
 
 ### Fixed
